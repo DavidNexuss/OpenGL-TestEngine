@@ -118,8 +118,6 @@ void useShader(GLuint programID)
 
 struct Mesh {
     GLuint vao,vbo;
-    GLuint programID;
-
     int vertexCount;
 };
 vector<Mesh> meshes;
@@ -134,15 +132,19 @@ MeshID loadMesh(Mesh&& mesh)
 struct Model
 {
     MeshID meshID;
+    GLuint programID;
     mat4 transformMatrix = mat4(1.0);
 
-    Model(MeshID _meshID) : meshID(_meshID) { }
+    Model(MeshID _meshID) : meshID(_meshID) 
+    {
+        programID = shaders[0]; //Default shader 
+    }
 
     inline void draw()
     {
         const Mesh& mesh = meshes[meshID];
 
-        useShader(mesh.programID);
+        useShader(programID);
         glUniformMatrix4fv(params[currentShader][TRANSFORM_MATRIX],1,false,&transformMatrix[0][0]);
         glBindVertexArray(mesh.vao);
         glDrawArrays(GL_TRIANGLES,0,mesh.vertexCount);
@@ -153,11 +155,13 @@ struct Model
     {
 
         //This is example code for demonstration
+
+        /*
         transformMatrix = rotate<float>(transformMatrix,deltaTime * M_PI * 0.5 * a,vec3(0,1,0));
         a += ((rand() % 100 - 50) * 0.01);  //Random angular acceleration
         a = 0.04 * a * (20.0 - a);          //Logistic map correction
 
-        transformMatrix = translate<float>(transformMatrix,vec3(5.0,0,0) * deltaTime);
+        transformMatrix = translate<float>(transformMatrix,vec3(5.0,0,0) * deltaTime); */
     }
 };
 
@@ -265,7 +269,6 @@ Mesh createPrimitiveMesh(PrimitiveMeshType type)
     glVertexAttribPointer(1,3,GL_FLOAT,GL_FALSE,sizeof(float) * 6,(void*)(3 * sizeof(float)));
     glEnableVertexAttribArray(1);
 
-    mesh.programID = shaders[0];
     return mesh;
 }
 
@@ -277,7 +280,7 @@ int render_loop(Window* window)
     glfwSetInputMode(window, GLFW_STICKY_KEYS, GL_TRUE);
     
     do{
-        glClear( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
         glClearColor(0.0,0.0,0.0,1.0);
 
         Scene::time += deltaTime;
@@ -309,6 +312,10 @@ void loadSpecificWorld()
 {
     //meshes.emplace_back(createPrimitiveMesh(Cube));
     
+    /*
+     * Marabunta world
+     */
+    /*
     MeshID cube = loadMesh(createPrimitiveMesh(Cube));
     vec3 midPoint = vec3(0.0);
     int l = 3000;
@@ -323,7 +330,9 @@ void loadSpecificWorld()
         models.push_back(model);
     }
 
-    Scene::focusOrigin = midPoint * 1.0f / float(l);
+    Scene::focusOrigin = midPoint * 1.0f / float(l); */
+
+    models.emplace_back(Model(loadMesh(createPrimitiveMesh(Cube))));
     
 }
 
