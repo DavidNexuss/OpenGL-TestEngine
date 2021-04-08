@@ -308,7 +308,7 @@ int main(int argc, char** argv)
     glfwSetCursorPosCallback(window, Viewport::cursor_position_callback);
     glfwSetFramebufferSizeCallback(window, Viewport::framebuffer_size_callback);
 
-
+    //Estas funciones cargan un mundo específico usnando toda la API
     loadSpecificMaterials();
     loadSpecificWorld();
     
