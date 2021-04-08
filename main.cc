@@ -82,7 +82,7 @@ namespace Scene {
 
     void update()
     {
-        projectionMatrix = glm::perspective(glm::radians(fov), 800.0f / 600.0f, 0.1f, 100.0f);
+        projectionMatrix = glm::perspective(glm::radians(fov), 800.0f / 600.0f, 0.1f, 500.0f);
         
         //Camera en 3ra persona amb una rotació completa x3
         float a = ((Viewport::xpos / Viewport::screenWidth) - 0.5) * M_PI * 3;
@@ -115,29 +115,53 @@ void useShader(GLuint programID)
         Scene::flush();
     }
 }
+
 struct Mesh {
     GLuint vao,vbo;
     GLuint programID;
 
-    mat4 transformMatrix = mat4(1.0);
     int vertexCount;
+};
+vector<Mesh> meshes;
+using MeshID = size_t;
+
+MeshID loadMesh(Mesh&& mesh)
+{
+    meshes.emplace_back(mesh);
+    return meshes.size() - 1;
+}
+
+struct Model
+{
+    MeshID meshID;
+    mat4 transformMatrix = mat4(1.0);
+
+    Model(MeshID _meshID) : meshID(_meshID) { }
 
     inline void draw()
     {
-        useShader(programID);
+        const Mesh& mesh = meshes[meshID];
+
+        useShader(mesh.programID);
         glUniformMatrix4fv(params[currentShader][TRANSFORM_MATRIX],1,false,&transformMatrix[0][0]);
-        glBindVertexArray(vao);
-        glDrawArrays(GL_TRIANGLES,0,vertexCount);
+        glBindVertexArray(mesh.vao);
+        glDrawArrays(GL_TRIANGLES,0,mesh.vertexCount);
     }
 
+    float a = 0.0;
     virtual void process() 
     {
-        transformMatrix = rotate<float>(transformMatrix,deltaTime * M_PI * 0.5 * 0.1,vec3(0,1,0));
+
+        //This is example code for demonstration
+        transformMatrix = rotate<float>(transformMatrix,deltaTime * M_PI * 0.5 * a,vec3(0,1,0));
+        a += ((rand() % 100 - 50) * 0.01);  //Random angular acceleration
+        a = 0.04 * a * (20.0 - a);          //Logistic map correction
+
         transformMatrix = translate<float>(transformMatrix,vec3(5.0,0,0) * deltaTime);
     }
 };
 
-vector<Mesh> meshes;
+vector<Model> models;
 
 static const GLfloat triangle_mesh[] = {
    -1.0f, -1.0f, 0.0f, 1.0,0.0,0.0,
@@ -260,10 +284,10 @@ int render_loop(Window* window)
         Scene::update();
         Scene::flush();
 
-        for(int i = 0; i < meshes.size(); i++)
+        for(int i = 0; i < models.size(); i++)
         {
-            meshes[i].process();
-            meshes[i].draw();
+            models[i].process();
+            models[i].draw();
         }
 
         glfwSwapBuffers(window);
@@ -284,17 +308,19 @@ void loadSpecificMaterials()
 void loadSpecificWorld()
 {
     //meshes.emplace_back(createPrimitiveMesh(Cube));
+    
+    MeshID cube = loadMesh(createPrimitiveMesh(Cube));
     vec3 midPoint = vec3(0.0);
-    int l = 200;
+    int l = 3000;
     for (size_t i = 0; i < l; i++)
     {
-        Mesh mesh = createPrimitiveMesh(Cube);
         int s = 100;
         vec3 randPos = vec3(rand() % s,rand() % s,rand() % s);
         midPoint += randPos;
 
-        mesh.transformMatrix = translate(mesh.transformMatrix,randPos);
-        meshes.push_back(mesh);
+        Model model(0);
+        model.transformMatrix = translate(model.transformMatrix,randPos);
+        models.push_back(model);
     }
 
     Scene::focusOrigin = midPoint * 1.0f / float(l);
