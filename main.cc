@@ -7,6 +7,10 @@
 #include <glm/glm.hpp>
 #include <glm/ext.hpp>
 
+
+#define STB_IMAGE_IMPLEMENTATION
+#include "stb_image.h"
+
 using namespace std;
 using namespace glm;
 
@@ -35,31 +39,91 @@ namespace Viewport
 
 }
 
+namespace Directory
+{
+    const string texturePrefix = "textures/";
+    const string materialPrefix = "materials/";
+}
+
+struct TextureData
+{
+    int width, height, nrChannels;
+    unsigned char* data;
+
+    TextureData(const string& path)
+    {
+        data = stbi_load((Directory::texturePrefix + path).c_str(),&width,&height,&nrChannels,0);
+        if (! data)
+        {
+            cerr << "Error loading texture " << path << " from disk" << endl;
+        }
+    }
+};
+using TextureID = size_t;
+namespace Texture
+{
+    
+    vector<TextureData> texturesData;
+    vector<GLuint> glTexturesIds;
+    vector<TextureID> texturesUnits(16);
+
+    TextureID loadTexture(const TextureData& textureData)
+    {
+        if (!textureData.data ) return -1;
+
+        GLuint texId;
+        glGenTextures(1,&texId);
+        glBindTexture(GL_TEXTURE_2D,texId);
+
+        //Texture filtering
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);	
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, textureData.width, textureData.height, 0, GL_RGB, GL_UNSIGNED_BYTE, textureData.data);
+        glGenerateMipmap(GL_TEXTURE_2D);
+
+        texturesData.push_back(textureData);
+        glTexturesIds.push_back(texId);
+        return texturesData.size() - 1;
+    }
+
+    inline void useTexture(TextureID textureID,int textureUnit)
+    {
+        GLuint glTextureID = glTexturesIds[textureID];
+        if (texturesUnits[textureUnit] != textureID)
+        {
+            texturesUnits[textureUnit] = textureID;
+            glActiveTexture(GL_TEXTURE0 + textureUnit);
+            glBindTexture(GL_TEXTURE_2D,glTextureID);
+        }
+    }
+}
+
+enum UniformBasics
+{
+    PROJECTION_MATRIX = 0,
+    VIEW_MATRIX,
+    TRANSFORM_MATRIX,
+    TIME
+};
+
 using MaterialID = size_t;
 
-#define PROJECTION_MATRIX 0
-#define VIEW_MATRIX 1
-#define TRANSFORM_MATRIX 2
-#define TIME 3
-
-/** 
- * Mantiene todos los shaders cargados i crea la abstracción de Material
- */
-namespace Material
+struct Material
 {
+    GLuint programID;
+    vector<GLuint> uniforms;
+    struct TextureAssingment
+    {
+        TextureID textureID;
+        int textureUnit;
+        GLuint uniformSlot;
+    };
 
-    vector<GLuint> shaders;
-    vector<size_t> usedMaterials;
-    map<MaterialID,vector<GLuint>> params;
-    
-    /*
-     * Garanteix una referencia a un shader ja carregat en el sistema
-     */
-    MaterialID currentMaterial = -1;
-    
-    
-    //Shader loading functions
-    
+    vector<TextureAssingment> assignedTextures;
+
     /*
      * pre:
      * L'ordre dels uniforms, si n'hi han es el següent:
@@ -68,44 +132,80 @@ namespace Material
      *  * mat4 transformMatrix
      *  * float time
      */
-    void loadShaderUniforms(const list<string>& uniforms,MaterialID mat)
-    { 
-        GLuint programID = shaders[mat];
-        params[mat].emplace_back(glGetUniformLocation(programID,"projectionMatrix"));
-        params[mat].emplace_back(glGetUniformLocation(programID,"viewMatrix"));
-        params[mat].emplace_back(glGetUniformLocation(programID,"transformMatrix"));
-        params[mat].emplace_back(glGetUniformLocation(programID,"time"));
     
-        for(const auto& uniform : uniforms)
+    void loadShaderUniforms(const list<string>& uniformsList)
+    { 
+        uniforms.emplace_back(glGetUniformLocation(programID,"projectionMatrix"));
+        uniforms.emplace_back(glGetUniformLocation(programID,"viewMatrix"));
+        uniforms.emplace_back(glGetUniformLocation(programID,"transformMatrix"));
+        uniforms.emplace_back(glGetUniformLocation(programID,"time"));
+    
+        for(const auto& uniform : uniformsList)
         {
-            params[mat].emplace_back(glGetUniformLocation(programID,uniform.c_str()));
+            uniforms.emplace_back(glGetUniformLocation(programID,uniform.c_str()));
             //TODO: check uniform not found
         }
     }
-    
-    MaterialID loadMaterial(string materialName,const list<string>& uniforms)
+    Material(string materialName,const list<string>& uniforms)
     {
-        string fragmentPath = "materials/" + materialName + "_fragment.glsl";
-        string vertexPath = "materials/" + materialName + "_vertex.glsl";
+        string fragmentPath = Directory::materialPrefix + materialName + "_fragment.glsl";
+        string vertexPath = Directory::materialPrefix + materialName + "_vertex.glsl";
     
-        GLuint programID = compileShader(vertexPath.c_str(),fragmentPath.c_str());
+        programID = compileShader(vertexPath.c_str(),fragmentPath.c_str());
         
         if (programID < 0)
         {
             cerr << "Error loading shaders!!!" << endl;
-            return -1;
+            throw std::runtime_error("Error compiling shader");
         }
+
+        loadShaderUniforms(uniforms);
+    }
+
+    bool addTexture(TextureID textureID,int textureUnit)
+    {
+        string uniformLocation = "texture" + assignedTextures.size();
+        GLuint uniformSlot = glGetUniformLocation(programID,uniformLocation.c_str());
+        if (uniformSlot < 0) return false;
+        assignedTextures.push_back({textureID,textureUnit,uniformSlot});
+        return true;
+    }
+
+    inline void bind()
+    {
+        glUseProgram(programID);
+        for (int i = 0; i < assignedTextures.size(); i++)
+        {
+            Texture::useTexture(assignedTextures[i].textureID,assignedTextures[i].textureUnit);
+        }
+    }
+};
+/** 
+ * Mantiene todos los shaders cargados i crea la abstracción de Material
+ */
+namespace MaterialLoader
+{
+
+    vector<Material> materials;
+    vector<size_t> usedMaterials;   //Usado para saber si el material ha sido usado en el frame actual
+
+
+    /*
+     * Garanteix una referencia a un shader ja carregat en el sistema
+     */
+    MaterialID currentMaterial = -1;
     
-        shaders.push_back(programID);
+    MaterialID loadMaterial(const Material& material)
+    {
+        materials.push_back(material);
         usedMaterials.push_back(0);
-        MaterialID mat = shaders.size() - 1;
-        loadShaderUniforms(uniforms,mat);
+        MaterialID mat = materials.size() - 1;
         return mat;
     }
 
     const inline vector<GLuint>& current()
     {
-        return params[currentMaterial];
+        return materials[currentMaterial].uniforms;
     }
 };
 
@@ -137,11 +237,10 @@ namespace Scene {
 
     void flush()
     {
-        if(Material::currentMaterial == -1) return;
 
-        glUniformMatrix4fv(Material::current()[PROJECTION_MATRIX],1,false,&projectionMatrix[0][0]);
-        glUniformMatrix4fv(Material::current()[VIEW_MATRIX],1,false,&viewMatrix[0][0]);
-        glUniform1f(       Material::current()[TIME],time);
+        glUniformMatrix4fv(MaterialLoader::current()[PROJECTION_MATRIX],1,false,&projectionMatrix[0][0]);
+        glUniformMatrix4fv(MaterialLoader::current()[VIEW_MATRIX],1,false,&viewMatrix[0][0]);
+        glUniform1f(       MaterialLoader::current()[TIME],time);
     }
 };
 
@@ -172,6 +271,13 @@ namespace MeshLoader
        1.0f, -1.0f, 0.0f,  0.0,1.0,0.0,
        0.0f,  1.0f, 0.0f,  0.0,0.0,1.0f
     };
+
+    static const GLfloat textured_plain_mesh[] = {
+       -1.0f, -1.0f, 0.0f, 1.0,0.0,0.0,  0.0,0.0,
+       1.0f, -1.0f, 0.0f,  0.0,1.0,0.0,  1.0,0.0,
+       0.0f,  1.0f, 0.0f,  0.0,0.0,1.0f, 0.5,0.5,
+    };
+
     static const GLfloat cube_mesh[] = {
     
         // -Z
@@ -241,9 +347,9 @@ namespace MeshLoader
     
     enum PrimitiveMeshType
     {
-        Triangle,Cube
+        Triangle,Plain,Cube
     };
-    Mesh createPrimitiveMesh(PrimitiveMeshType type)
+    Mesh createPrimitiveMesh(PrimitiveMeshType type,bool uv = false)
     {
         Mesh mesh;
         glGenVertexArrays(1, &mesh.vao);
@@ -257,18 +363,32 @@ namespace MeshLoader
             case Triangle:
             glBufferData(GL_ARRAY_BUFFER, sizeof(triangle_mesh), triangle_mesh, GL_STATIC_DRAW);
             mesh.vertexCount = 3;
-            
+            break;
+
+            case Plain:
+            glBufferData(GL_ARRAY_BUFFER, sizeof(textured_plain_mesh), textured_plain_mesh, GL_STATIC_DRAW);
+            mesh.vertexCount = 3;
+            break;
+
             case Cube:
             glBufferData(GL_ARRAY_BUFFER, sizeof(cube_mesh), cube_mesh, GL_STATIC_DRAW);
             mesh.vertexCount = 36;
         }
     
-        glVertexAttribPointer(0,3,GL_FLOAT,GL_FALSE,sizeof(float) * 6,(void*)0);
+        int rowSize = uv ? 8 : 6;
+        rowSize *= sizeof(float);
+
+        glVertexAttribPointer(0,3,GL_FLOAT,GL_FALSE,rowSize,(void*)0);
         glEnableVertexAttribArray(0);
     
-        glVertexAttribPointer(1,3,GL_FLOAT,GL_FALSE,sizeof(float) * 6,(void*)(3 * sizeof(float)));
+        glVertexAttribPointer(1,3,GL_FLOAT,GL_FALSE,rowSize,(void*)(3 * sizeof(float)));
         glEnableVertexAttribArray(1);
     
+        if (uv)
+        {
+            glVertexAttribPointer(2,2,GL_FLOAT,GL_FALSE,rowSize,(void*)(3 * sizeof(float)));
+            glEnableVertexAttribArray(2);
+        }
         return mesh;
     }
 
@@ -293,7 +413,7 @@ struct Model
         const Mesh& mesh = MeshLoader::meshes[meshID];
 
         Renderer::useMaterial(materialID);
-        glUniformMatrix4fv(Material::current()[TRANSFORM_MATRIX],1,false,&transformMatrix[0][0]);
+        glUniformMatrix4fv(MaterialLoader::current()[TRANSFORM_MATRIX],1,false,&transformMatrix[0][0]);
         glBindVertexArray(mesh.vao);
         glDrawArrays(GL_TRIANGLES,0,mesh.vertexCount);
     }
@@ -328,16 +448,16 @@ namespace Renderer
 
     inline void useMaterial(MaterialID materialID)
     {
-        GLuint programID = Material::shaders[materialID];
-        if(Material::currentMaterial != materialID)
+        GLuint programID = MaterialLoader::materials[materialID].programID;
+        if(MaterialLoader::currentMaterial != materialID)
         {
-            Material::currentMaterial = materialID;
-            glUseProgram(programID);
+            MaterialLoader::currentMaterial = materialID;
+            MaterialLoader::materials[MaterialLoader::currentMaterial].bind();
         }
 
-        if (Material::usedMaterials[materialID] != currentFrame)
+        if (MaterialLoader::usedMaterials[materialID] != currentFrame)
         {
-            Material::usedMaterials[materialID] = currentFrame;
+            MaterialLoader::usedMaterials[materialID] = currentFrame;
             Scene::flush();
         }
     }
@@ -357,7 +477,6 @@ namespace Renderer
     
             Scene::time += deltaTime;
             Scene::update();
-            Scene::flush();
     
             for(int i = 0; i < ModelLoader::models.size(); i++)
             {
@@ -380,8 +499,13 @@ namespace Renderer
 //Funciones especificas de testeo
 void loadSpecificMaterials()
 {
-    Material::loadMaterial("primitive",list<string>());
-    Material::loadMaterial("emissive",{"emissive"});
+    
+    Material textured("textured",list<string>());
+    textured.addTexture(Texture::loadTexture(TextureData("uvgrid.png")),0);
+
+    MaterialLoader::loadMaterial(Material("primitive",list<string>()));
+    MaterialLoader::loadMaterial(Material("emissive",{"emissive"}));
+    MaterialLoader::loadMaterial(textured);
 }
 void loadSpecificWorld()
 {
@@ -390,6 +514,7 @@ void loadSpecificWorld()
     /*
      * Marabunta world
      */
+/*
     MeshID cube = MeshLoader::loadMesh(MeshLoader::createPrimitiveMesh(MeshLoader::Cube));
     vec3 midPoint = vec3(0.0);
     int l = 3000;
@@ -409,8 +534,16 @@ void loadSpecificWorld()
     }
 
     Scene::focusOrigin = midPoint * 1.0f / float(l);
+    **/
 
-    //models.emplace_back(Model(loadMesh(createPrimitiveMesh(Cube))));
+    
+    MeshID plain = MeshLoader::loadMesh(MeshLoader::createPrimitiveMesh(MeshLoader::Plain,true));
+    Model plainA(plain);
+    plainA.materialID = 2;
+    plainA.transformMatrix = scale(plainA.transformMatrix,vec3(3.0,3.0,3.0));
+    ModelLoader::loadModel(plainA);
+
+    ModelLoader::loadModel(Model(MeshLoader::loadMesh(MeshLoader::createPrimitiveMesh(MeshLoader::Cube))));
     
 }
 
