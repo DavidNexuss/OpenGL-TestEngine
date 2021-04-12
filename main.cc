@@ -16,6 +16,71 @@ using namespace glm;
 
 const float deltaTime = 0.1;
 
+/*
+ * This templates keeps a sorted vector and a set of unordered references mapped to the vector
+ * Bheaviour is the same as vector except that this structure enables for an ordered trasversal of the items
+ */
+template <typename T>
+struct sorted_vector
+{
+    vector<T> values;
+    vector<size_t> indexs;
+
+    sorted_vector() { }
+
+    size_t push_back(T value)
+    {
+        auto it = lower_bound(values.begin(), values.end(),value);
+        size_t a = it - values.begin();
+        it = values.insert(it, value);
+
+        for (int i = a; i < indexs.size(); i++)
+        {
+            indexs[i]++;
+        }
+        indexs.push_back(a);
+        return indexs.size() - 1;
+    }
+
+    const T& operator[] (size_t idx) const { return values[indexs[idx]]; }
+    T& operator[] (size_t idx) { return values[indexs[idx]]; }
+
+    inline bool size() { return indexs.size(); } 
+    vector<T>& native() {return values; }
+};
+
+namespace Debug
+{
+    int materialSwaps;
+    int meshSwaps;
+
+    inline void reset()
+    {
+        materialSwaps = 0;
+        meshSwaps = 0;
+    }
+
+    inline void print()
+    {
+        cerr << "Frame debug information: " << endl;
+        cerr << "Material swaps :" << materialSwaps << endl;
+        cerr << "Mesh swaps :" << meshSwaps << endl;
+        cerr << "----" << endl;
+    }
+}
+
+#ifdef DEBUG 
+    #define REGISTER_FRAME() Debug::reset()
+    #define REGISTER_MATERIAL_SWAP() Debug::materialSwaps++
+    #define REGISTER_MESH_SWAP() Debug::meshSwaps++
+    #define LOG_FRAME() Debug::print()
+#else
+    #define REGISTER_FRAME()
+    #define REGISTER_MATERIAL_SWAP()
+    #define REGISTER_MESH_SWAP()
+    #define LOG_FRAME()
+#endif
+
 /**
  * Mantiene todos los atributos del viewport y de glfw a procesar,incluido el input
  */
@@ -23,6 +88,7 @@ namespace Viewport
 {
     double screenWidth,screenHeight;
     double xpos,ypos;
+    double scrollX,scrollY;
 
     void cursor_position_callback(GLFWwindow* window, double x, double y)
     {
@@ -36,7 +102,12 @@ namespace Viewport
         screenHeight = height;
         glViewport(0, 0, width, height);
     }
-
+    
+    void scroll_callback(GLFWwindow* window, double xoffset, double yoffset)
+    {
+        scrollX = xoffset;
+        scrollY = yoffset;
+    }
 }
 
 namespace Directory
@@ -216,21 +287,38 @@ namespace Scene {
     mat4 projectionMatrix, viewMatrix;
     const float fov = 80.0;
     float time = 0.0;
+
+    float zoomFactor = 1.0;
+    float zoomSpeed = 0.0;
+    const float zoomDamping = 0.6;
+
     vec3 focusOrigin;
 
     void update()
     {
-        projectionMatrix = glm::perspective(glm::radians(fov), 800.0f / 600.0f, 0.1f, 500.0f);
+        projectionMatrix = glm::perspective(glm::radians(fov * zoomFactor), 800.0f / 600.0f, 0.1f, 500.0f);
         
         //Camera en 3ra persona amb una rotació completa x3
         float a = ((Viewport::xpos / Viewport::screenWidth) - 0.5) * M_PI * 3;
         float b = ((Viewport::ypos / Viewport::screenHeight) - 0.5) * M_PI * 3;
 
-        viewMatrix = mat4(1.0);
 
-        viewMatrix = translate(viewMatrix,vec3(0,0,-5));
-        viewMatrix = rotate(viewMatrix,b,vec3(1,0,0));
-        viewMatrix = rotate(viewMatrix,a,vec3(0,1,0));
+        zoomSpeed += Viewport::scrollY * deltaTime;
+        zoomFactor -= zoomSpeed * deltaTime;
+        zoomSpeed -= zoomSpeed * deltaTime * zoomDamping;
+        
+        zoomFactor = std::max(zoomFactor,0.0f);
+
+        Viewport::scrollY = 0.0;
+
+        viewMatrix = mat4(1.0);
+        viewMatrix = translate(viewMatrix,vec3(0,0,-5.0));
+
+     // viewMatrix = rotate(viewMatrix,roll,vec3(0,0,1))
+        viewMatrix = rotate(viewMatrix,b,vec3(1,0,0));          //  b
+        viewMatrix = rotate(viewMatrix,a,vec3(0,1,0));          // -a
+        
+        //View reference point
         viewMatrix = translate(viewMatrix,-focusOrigin);
 
     }
@@ -260,6 +348,8 @@ using MeshID = size_t;
 namespace MeshLoader
 {
     vector<Mesh> meshes;
+    MeshID currentMesh = -1;
+
     MeshID loadMesh(Mesh&& mesh)
     {
         meshes.emplace_back(mesh);
@@ -281,66 +371,66 @@ namespace MeshLoader
     static const GLfloat cube_mesh[] = {
     
         // -Z
-        -1.0,1.0,-1.0,    0.0,1.0,0.0,
-        -1.0,-1.0,-1.0,   1.0,0.0,0.0,
-        1.0,1.0,-1.0,     0.0,0.0,1.0,
+        -1.0,1.0,-1.0,    0.0,1.0,0.0,  0.0,1.0,
+        -1.0,-1.0,-1.0,   1.0,0.0,0.0,  0.0,0.0,
+        1.0,1.0,-1.0,     0.0,0.0,1.0,  1.0,1.0,
     
-        1.0,-1.0,-1.0,    0.0,1.0,0.0,
-        1.0,1.0,-1.0,     0.0,0.0,1.0,
-        -1.0,-1.0,-1.0,   1.0,0.0,0.0,
+        1.0,-1.0,-1.0,    0.0,1.0,0.0,  1.0,0.0,
+        1.0,1.0,-1.0,     0.0,0.0,1.0,  1.0,1.0,
+        -1.0,-1.0,-1.0,   1.0,0.0,0.0,  0.0,0.0,
     
         // +Z
     
-        -1.0,-1.0,1.0,   1.0,0.0,0.0,
-        -1.0,1.0,1.0,    0.0,1.0,0.0,
-        1.0,1.0,1.0,     0.0,0.0,1.0,
-    
-        1.0,1.0,1.0,     0.0,0.0,1.0,
-        1.0,-1.0,1.0,    0.0,1.0,0.0,
-        -1.0,-1.0,1.0,   1.0,0.0,0.0,
+        -1.0,-1.0,1.0,    1.0,0.0,0.0,  0.0,1.0,
+        -1.0,1.0,1.0,     0.0,1.0,0.0,  0.0,0.0,
+        1.0,1.0,1.0,      0.0,0.0,1.0,  1.0,1.0,
+                                                
+        1.0,1.0,1.0,      0.0,0.0,1.0,  1.0,0.0,
+        1.0,-1.0,1.0,     0.0,1.0,0.0,  1.0,1.0,
+        -1.0,-1.0,1.0,    1.0,0.0,0.0,  0.0,0.0,
     
         // +Y
     
-        -1.0,1.0,-1.0,   0.0,1.0,0.0,
-        1.0,1.0,-1.0,    0.0,0.0,1.0,
-        -1.0,1.0,1.0,    0.0,1.0,0.0,
-    
-    
-        -1.0,1.0,1.0,    0.0,1.0,0.0,
-        1.0,1.0,-1.0,    0.0,0.0,1.0,
-        1.0,1.0,1.0,     0.0,0.0,1.0,
-    
-    
-        // -Y
-    
-        1.0,-1.0,-1.0,    0.0,1.0,0.0,
-        -1.0,-1.0,-1.0,   1.0,0.0,0.0,
-        -1.0,-1.0,1.0,    1.0,0.0,0.0,
-    
-    
-        1.0,-1.0,-1.0,    0.0,1.0,0.0,
-        -1.0,-1.0,1.0,    1.0,0.0,0.0,
-        1.0,-1.0,1.0,     0.0,1.0,0.0,
+        -1.0,1.0,-1.0,    0.0,1.0,0.0,  0.0,1.0,
+        1.0,1.0,-1.0,     0.0,0.0,1.0,  0.0,0.0,
+        -1.0,1.0,1.0,     0.0,1.0,0.0,  1.0,1.0,
+                                                
+                                        
+        -1.0,1.0,1.0,     0.0,1.0,0.0,  1.0,0.0,
+        1.0,1.0,-1.0,     0.0,0.0,1.0,  1.0,1.0,
+        1.0,1.0,1.0,      0.0,0.0,1.0,  0.0,0.0,        
+                                                
+                                                
+        // -Y                           
+                                        
+        1.0,-1.0,-1.0,    0.0,1.0,0.0,  0.0,1.0,
+        -1.0,-1.0,-1.0,   1.0,0.0,0.0,  0.0,0.0,
+        -1.0,-1.0,1.0,    1.0,0.0,0.0,  1.0,1.0,
+                                                
+                                        
+        1.0,-1.0,-1.0,    0.0,1.0,0.0,  1.0,0.0,
+        -1.0,-1.0,1.0,    1.0,0.0,0.0,  1.0,1.0,
+        1.0,-1.0,1.0,     0.0,1.0,0.0,  0.0,0.0,
     
         // +X
     
-        1.0,1.0,-1.0,     0.0,0.0,1.0,
-        1.0,-1.0,-1.0,    0.0,1.0,0.0,
-        1.0,-1.0,1.0,     0.0,1.0,0.0,
-    
-        1.0,-1.0,1.0,     0.0,1.0,0.0,
-        1.0,1.0,1.0,      0.0,0.0,1.0,
-        1.0,1.0,-1.0,     0.0,0.0,1.0,
-    
-        // -X
-    
-        -1.0,-1.0,-1.0,    1.0,0.0,0.0,
-        -1.0,1.0,-1.0,     0.0,1.0,0.0,
-        -1.0,-1.0,1.0,     1.0,0.0,0.0,
-    
-        -1.0,1.0,1.0,      0.0,1.0,0.0,
-        -1.0,-1.0,1.0,     1.0,0.0,0.0,
-        -1.0,1.0,-1.0,     0.0,1.0,0.0,
+        1.0,1.0,-1.0,     0.0,0.0,1.0,   0.0,1.0,
+        1.0,-1.0,-1.0,    0.0,1.0,0.0,   0.0,0.0,
+        1.0,-1.0,1.0,     0.0,1.0,0.0,   1.0,1.0,
+                                                 
+        1.0,-1.0,1.0,     0.0,1.0,0.0,   1.0,0.0,
+        1.0,1.0,1.0,      0.0,0.0,1.0,   1.0,1.0,
+        1.0,1.0,-1.0,     0.0,0.0,1.0,   0.0,0.0,
+                                                 
+        // -X                                    
+                                                 
+        -1.0,-1.0,-1.0,    1.0,0.0,0.0,  0.0,1.0,
+        -1.0,1.0,-1.0,     0.0,1.0,0.0,  0.0,0.0,
+        -1.0,-1.0,1.0,     1.0,0.0,0.0,  1.0,1.0,
+                                                 
+        -1.0,1.0,1.0,      0.0,1.0,0.0,  1.0,0.0,
+        -1.0,-1.0,1.0,     1.0,0.0,0.0,  1.0,1.0,
+        -1.0,1.0,-1.0,     0.0,1.0,0.0,  0.0,0.0
     
     };
     
@@ -386,15 +476,18 @@ namespace MeshLoader
     
         if (uv)
         {
-            glVertexAttribPointer(2,2,GL_FLOAT,GL_FALSE,rowSize,(void*)(3 * sizeof(float)));
+            glVertexAttribPointer(2,2,GL_FLOAT,GL_FALSE,rowSize,(void*)(6 * sizeof(float)));
             glEnableVertexAttribArray(2);
         }
         return mesh;
     }
-
 };
 
-namespace Renderer{ inline void useMaterial(MaterialID id); }
+namespace Renderer
+{ 
+    inline void useMaterial(MaterialID id); 
+    inline void useMesh(MeshID id);
+}
 /**
  * Representa un modelo dentro de la escena 3D
  * Representado por una mesh una matriz de transformación y un material
@@ -413,13 +506,19 @@ struct Model
         const Mesh& mesh = MeshLoader::meshes[meshID];
 
         Renderer::useMaterial(materialID);
+        Renderer::useMesh(meshID);
+
         glUniformMatrix4fv(MaterialLoader::current()[TRANSFORM_MATRIX],1,false,&transformMatrix[0][0]);
-        glBindVertexArray(mesh.vao);
         glDrawArrays(GL_TRIANGLES,0,mesh.vertexCount);
     }
     virtual void process() 
     {
 
+    }
+
+    bool operator<(const Model& model)
+    {
+        return materialID < model.materialID;
     }
 };
 
@@ -430,13 +529,14 @@ using ModelID = size_t;
 
 namespace ModelLoader
 {
-    vector<Model> models;
+    sorted_vector<Model> models;
 
     ModelID loadModel(const Model& model)
     {
-        models.push_back(model);
-        return models.size() - 1;
+        return models.push_back(model);
     }
+
+    inline Model& get(ModelID modelID) { return models[modelID]; }
 };
 
 /**
@@ -453,12 +553,23 @@ namespace Renderer
         {
             MaterialLoader::currentMaterial = materialID;
             MaterialLoader::materials[MaterialLoader::currentMaterial].bind();
+            REGISTER_MATERIAL_SWAP();
         }
 
         if (MaterialLoader::usedMaterials[materialID] != currentFrame)
         {
             MaterialLoader::usedMaterials[materialID] = currentFrame;
             Scene::flush();
+        }
+    }
+
+    inline void useMesh(MeshID meshID)
+    {
+        if (meshID != MeshLoader::currentMesh)
+        {
+            MeshLoader::currentMesh = meshID;
+            glBindVertexArray(MeshLoader::meshes[meshID].vao);
+            REGISTER_MESH_SWAP();
         }
     }
 
@@ -470,7 +581,10 @@ namespace Renderer
         glEnable(GL_DEPTH_TEST);    
         glfwSetInputMode(window, GLFW_STICKY_KEYS, GL_TRUE);
         
+        auto models = ModelLoader::models.native();
         do{
+            REGISTER_FRAME();
+
             currentFrame++;
             glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
             glClearColor(0.0,0.0,0.0,1.0);
@@ -478,14 +592,16 @@ namespace Renderer
             Scene::time += deltaTime;
             Scene::update();
     
-            for(int i = 0; i < ModelLoader::models.size(); i++)
+            for(int i = 0; i < models.size(); i++)
             {
-                ModelLoader::models[i].process();
-                ModelLoader::models[i].draw();
+                models[i].process();
+                models[i].draw();
             }
     
             glfwSwapBuffers(window);
             glfwPollEvents();
+
+            LOG_FRAME();
         
         }
         while( glfwGetKey(window, GLFW_KEY_ESCAPE ) != GLFW_PRESS &&
@@ -514,19 +630,19 @@ void loadSpecificWorld()
     /*
      * Marabunta world
      */
-/*
-    MeshID cube = MeshLoader::loadMesh(MeshLoader::createPrimitiveMesh(MeshLoader::Cube));
+    /*
+    MeshID cube = MeshLoader::loadMesh(MeshLoader::createPrimitiveMesh(MeshLoader::Cube,true));
     vec3 midPoint = vec3(0.0);
-    int l = 3000;
+    int l = 100;
     for (size_t i = 0; i < l; i++)
     {
-        int s = 100;
+        int s = 10;
         vec3 randPos = vec3(rand() % s,rand() % s,rand() % s);
         midPoint += randPos;
 
         Model model(0);
         model.transformMatrix = translate(model.transformMatrix,randPos);
-        if (i % 2) model.materialID = 1;
+        model.materialID = i % 2 + 1;
         
         ModelLoader::loadModel(model);
 
@@ -534,17 +650,17 @@ void loadSpecificWorld()
     }
 
     Scene::focusOrigin = midPoint * 1.0f / float(l);
-    **/
 
-    
+    */
+    /*
     MeshID plain = MeshLoader::loadMesh(MeshLoader::createPrimitiveMesh(MeshLoader::Plain,true));
     Model plainA(plain);
     plainA.materialID = 2;
     plainA.transformMatrix = scale(plainA.transformMatrix,vec3(3.0,3.0,3.0));
     ModelLoader::loadModel(plainA);
-
-    ModelLoader::loadModel(Model(MeshLoader::loadMesh(MeshLoader::createPrimitiveMesh(MeshLoader::Cube))));
-    
+*/
+    ModelID cube = ModelLoader::loadModel(Model(MeshLoader::loadMesh(MeshLoader::createPrimitiveMesh(MeshLoader::Cube,true))));
+    ModelLoader::get(cube).materialID = 2;
 }
 
 int main(int argc, char** argv)
@@ -553,6 +669,7 @@ int main(int argc, char** argv)
     
     glfwSetCursorPosCallback(window, Viewport::cursor_position_callback);
     glfwSetFramebufferSizeCallback(window, Viewport::framebuffer_size_callback);
+    glfwSetScrollCallback(window, Viewport::scroll_callback);
 
     //Estas funciones cargan un mundo específico usnando toda la API
     loadSpecificMaterials();
