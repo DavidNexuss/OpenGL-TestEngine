@@ -1,3 +1,5 @@
+#define _GLIBCXX_PARALLEL
+
 #include "window.h"
 #include "load_shader.h"
 #include <iostream>
@@ -20,6 +22,8 @@ const float deltaTime = 0.1;
  * This templates keeps a sorted vector and a set of unordered references mapped to the vector
  * Bheaviour is the same as vector except that this structure enables for an ordered trasversal of the items
  */
+
+#define BATCHING_ENABLED
 template <typename T>
 struct sorted_vector
 {
@@ -30,34 +34,43 @@ struct sorted_vector
 
     size_t push_back(T value)
     {
-        auto it = lower_bound(values.begin(), values.end(),value);
-        size_t a = it - values.begin();
-        it = values.insert(it, value);
+        #ifdef BATCHING_ENABLED
+            auto it = lower_bound(values.begin(), values.end(),value);
+            size_t a = it - values.begin();
+            it = values.insert(it, value);
 
-        for (int i = a; i < indexs.size(); i++)
-        {
-            indexs[i]++;
-        }
-        indexs.push_back(a);
-        return indexs.size() - 1;
+            for (int i = a; i < indexs.size(); i++)
+            {
+                indexs[i]++;
+            }
+            indexs.push_back(a);
+            return indexs.size() - 1;
+
+        #else
+            values.push_back(value);
+            indexs.push_back(values.size() - 1);
+            return indexs.size() - 1;
+        #endif
     }
 
     const T& operator[] (size_t idx) const { return values[indexs[idx]]; }
     T& operator[] (size_t idx) { return values[indexs[idx]]; }
 
     inline bool size() { return indexs.size(); } 
-    vector<T>& native() {return values; }
+    const vector<T>& native() {return values; }
 };
 
 namespace Debug
 {
     int materialSwaps;
     int meshSwaps;
+    int textureSwaps;
 
     inline void reset()
     {
         materialSwaps = 0;
         meshSwaps = 0;
+        textureSwaps = 0;
     }
 
     inline void print()
@@ -65,19 +78,23 @@ namespace Debug
         cerr << "Frame debug information: " << endl;
         cerr << "Material swaps :" << materialSwaps << endl;
         cerr << "Mesh swaps :" << meshSwaps << endl;
+        cerr << "Texture swaps :" << textureSwaps << endl;
         cerr << "----" << endl;
     }
 }
 
+#define DEBUG
 #ifdef DEBUG 
     #define REGISTER_FRAME() Debug::reset()
     #define REGISTER_MATERIAL_SWAP() Debug::materialSwaps++
     #define REGISTER_MESH_SWAP() Debug::meshSwaps++
+    #define REGISTER_TEXTURE_SWAP() Debug::textureSwaps++;
     #define LOG_FRAME() Debug::print()
 #else
     #define REGISTER_FRAME()
     #define REGISTER_MATERIAL_SWAP()
     #define REGISTER_MESH_SWAP()
+    #define REGISTER_TEXTURE_SWAP()
     #define LOG_FRAME()
 #endif
 
@@ -168,6 +185,7 @@ namespace Texture
             texturesUnits[textureUnit] = textureID;
             glActiveTexture(GL_TEXTURE0 + textureUnit);
             glBindTexture(GL_TEXTURE_2D,glTextureID);
+            REGISTER_TEXTURE_SWAP();
         }
     }
 }
@@ -251,6 +269,7 @@ struct Material
         }
     }
 };
+
 /** 
  * Mantiene todos los shaders cargados i crea la abstracción de Material
  */
@@ -518,7 +537,8 @@ struct Model
 
     bool operator<(const Model& model)
     {
-        return materialID < model.materialID;
+        // return meshID < model.meshID || (meshID == model.meshID && (materialID < model.materialID ));
+        return materialID < model.materialID || (materialID == model.materialID && meshID < model.meshID);
     }
 };
 
@@ -616,12 +636,17 @@ namespace Renderer
 void loadSpecificMaterials()
 {
     
-    Material textured("textured",list<string>());
-    textured.addTexture(Texture::loadTexture(TextureData("uvgrid.png")),0);
-
     MaterialLoader::loadMaterial(Material("primitive",list<string>()));
     MaterialLoader::loadMaterial(Material("emissive",{"emissive"}));
+
+    Material textured("textured",list<string>());
+    textured.addTexture(Texture::loadTexture(TextureData("uvgrid.png")),0);
     MaterialLoader::loadMaterial(textured);
+
+    Material textured2("textured",list<string>());
+    textured2.addTexture(Texture::loadTexture(TextureData("grass.jpg")),0);
+    MaterialLoader::loadMaterial(textured2);
+
 }
 void loadSpecificWorld()
 {
@@ -630,19 +655,20 @@ void loadSpecificWorld()
     /*
      * Marabunta world
      */
-    /*
     MeshID cube = MeshLoader::loadMesh(MeshLoader::createPrimitiveMesh(MeshLoader::Cube,true));
+    MeshID plain = MeshLoader::loadMesh(MeshLoader::createPrimitiveMesh(MeshLoader::Plain,true));
+
     vec3 midPoint = vec3(0.0);
-    int l = 100;
+    int l = 500;
     for (size_t i = 0; i < l; i++)
     {
-        int s = 10;
+        int s = 100;
         vec3 randPos = vec3(rand() % s,rand() % s,rand() % s);
         midPoint += randPos;
 
-        Model model(0);
+        Model model(i % 2);
         model.transformMatrix = translate(model.transformMatrix,randPos);
-        model.materialID = i % 2 + 1;
+        model.materialID = i % 3 + 1;
         
         ModelLoader::loadModel(model);
 
@@ -651,7 +677,6 @@ void loadSpecificWorld()
 
     Scene::focusOrigin = midPoint * 1.0f / float(l);
 
-    */
     /*
     MeshID plain = MeshLoader::loadMesh(MeshLoader::createPrimitiveMesh(MeshLoader::Plain,true));
     Model plainA(plain);
@@ -659,8 +684,9 @@ void loadSpecificWorld()
     plainA.transformMatrix = scale(plainA.transformMatrix,vec3(3.0,3.0,3.0));
     ModelLoader::loadModel(plainA);
 */
+        /*
     ModelID cube = ModelLoader::loadModel(Model(MeshLoader::loadMesh(MeshLoader::createPrimitiveMesh(MeshLoader::Cube,true))));
-    ModelLoader::get(cube).materialID = 2;
+    ModelLoader::get(cube).materialID = 2; */
 }
 
 int main(int argc, char** argv)

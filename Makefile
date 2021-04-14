@@ -1,4 +1,4 @@
 main: main.cc
-	g++ main.cc -lGL -lglfw -lGLU -lGLEW -O2 -o main
+	g++ main.cc -O3 -msse4 -mavx2 -fopenmp -lGL -lglfw -lGLU -lGLEW -o main
 clean:
 	rm main
