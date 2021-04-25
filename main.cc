@@ -637,9 +637,9 @@ struct MeshBuffer
         return (const GLfloat*)&meshBuffer[0];
     }
 };
-
+using MeshID = size_t;
 struct Mesh {
-    GLuint vao,vbo;
+    GLuint vao,vbo,ebo;
     size_t vertexCount;
     size_t vertexStride;
     shared_ptr<MeshBuffer> meshBuffer;
@@ -651,7 +651,51 @@ struct Mesh {
 
 };
 
-using MeshID = size_t;
+struct PreparedMesh
+{
+
+    struct Vertex
+    {
+        glm::vec3 position;
+        glm::vec3 normal;
+        glm::vec2 texCoords;
+    };
+
+    GLuint VAO,VBO,EBO;
+    std::vector<Vertex> vertices;
+    std::vector<size_t> indices;
+
+    PreparedMesh(const std::vector<Vertex>& _vertices, const std::vector<size_t> _indices) :
+        vertices(_vertices), 
+        indices(_indices) { }
+
+    void glGen()
+    {
+        glGenVertexArrays(1, &VAO);
+        glGenBuffers(1, &VBO);
+        glGenBuffers(1, &EBO);
+
+        glBindVertexArray(VAO);
+        glBindBuffer(GL_ARRAY_BUFFER, VBO);
+
+        glBufferData(GL_ARRAY_BUFFER, vertices.size() * sizeof(Vertex), &vertices[0], GL_STATIC_DRAW);  
+
+        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO);
+        glBufferData(GL_ELEMENT_ARRAY_BUFFER, indices.size() * sizeof(unsigned int), 
+                     &indices[0], GL_STATIC_DRAW);
+
+        glEnableVertexAttribArray(0);	
+        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)0);
+
+        glEnableVertexAttribArray(1);	
+        glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)offsetof(Vertex, normal));
+
+        glEnableVertexAttribArray(2);	
+        glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)offsetof(Vertex, texCoords));
+
+        glBindVertexArray(0);
+    }
+};
 
 /**
  * Mantiene un vector de todas las mesh disponibles a usar y algunas funciones utilitarias para crear Meshes
