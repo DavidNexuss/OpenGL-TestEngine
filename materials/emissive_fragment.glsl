@@ -1,11 +1,12 @@
 #version 330
 out vec3 color;
 in vec3 fragColor;
-uniform vec3 emissive;
 uniform float time;
+uniform vec3 emissive;
+uniform float factor;
 
 void main()
 {
-    float a = 0.5;
-    color = fragColor * (1.0 + (sin(time + gl_FragCoord.x * 0.001) * a + a));
+    float a = factor;
+    color = emissive * fragColor * ((sin(time) * factor) + factor);
 }
