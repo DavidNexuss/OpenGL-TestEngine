@@ -245,6 +245,11 @@ class Uniform
 
     UniformType type;
     bool forward;
+
+    Uniform() { }
+    #define UNIFORMS_CONSTRUCTOR(v,T) constexpr Uniform(const T& _##v) : v(_##v),type(UniformType::v),forward(true) { }
+    UNIFORMS_LIST(UNIFORMS_CONSTRUCTOR)
+    #undef UNIFORMS_CONSTRUCTOR
 };
 
 using MaterialInstanceID = size_t;
@@ -253,7 +258,12 @@ struct MaterialInstance
     vector<Uniform> uniformValues;
     vector<TextureID> assignedTextureUnits;
 
-    MaterialInstance(size_t size = 0) : uniformValues(size), assignedTextureUnits(16,-1) { }
+    MaterialInstance(size_t size = 0) : uniformValues(size), 
+    assignedTextureUnits(Texture::maxTextureUnits,-1) { }
+
+    MaterialInstance(const vector<Uniform>& _uniformValues) : uniformValues(_uniformValues), 
+    assignedTextureUnits(Texture::maxTextureUnits,-1)
+    {}
 
     inline void useUniform(UniformID id,GLuint glUniformID)
     {
@@ -327,6 +337,7 @@ struct Material
     vector<MaterialInstanceID> usedInstances;
     
     string materialName;
+    vector<GLuint> textureUniforms;
 
     Material(string materialName,const list<string>& uniforms)
     {
@@ -377,11 +388,15 @@ struct Material
             //TODO: check uniform not found
         }
 
-        for (size_t i = 0; i < Texture::maxTextureUnits; i++)
+        GLuint location = 0;
+        for (size_t i = 0; i < Texture::maxTextureUnits and location != -1; i++)
         {
             string uniformName = "texture" + to_string(i);
-            GLuint location = glGetUniformLocation(programID,uniformName.c_str());
-            glUniform1i(location,i);
+            location = glGetUniformLocation(programID,uniformName.c_str());
+            if(location != -1)
+            {
+                textureUniforms.push_back(location);
+            }
         }
         
     }
@@ -412,6 +427,7 @@ struct Material
             if (instance.assignedTextureUnits[i] != -1)
             {
                 Texture::useTexture(instance.assignedTextureUnits[i],i);
+                glUniform1i(textureUniforms[i],i);
             }
         }
         
@@ -1130,14 +1146,15 @@ void loadSpecificMaterials()
     MaterialInstance debugMaterialInstance;
     debugMaterialInstance.setTexture(Texture::loadTexture(TextureData("uvgrid.png")),0);
 
-    MaterialInstance container;
+    MaterialInstance container({Uniform(3.3f)});
+    
     container.setTexture(Texture::loadTexture(TextureData("container.png")),0);
-    container.setTexture(Texture::loadTexture(TextureData("uvgrid.png")),1);
+    container.setTexture(Texture::loadTexture(TextureData("container_specular.png")),1);
     MaterialInstanceLoader::loadMaterialInstance(container);
 
     MaterialLoader::loadMaterial(Material("primitive",list<string>()));
     MaterialLoader::loadMaterial(Material("emissive",{"emissive","factor"}));
-    Material light("light",list<string>());
+    Material light("light",{"shinness"});
 
     MaterialLoader::loadMaterial(light);
     MaterialLoader::loadMaterial(Material("unshaded",{"shadecolor"}));
@@ -1208,13 +1225,13 @@ void loadSpecificWorld()
     ModelLoader::loadModel(cube);
     ModelLoader::loadModel(cube2);
 
-    for (size_t i = 0; i < 3; i++)
+    for (size_t i = 0; i < 4; i++)
     {
 
         vec3 lightPosition(rand() % 10 - 5,rand() % 10 - 5,rand() % 10 - 5);
         cube3.transformMatrix = glm::scale(glm::translate(mat4(1.0),lightPosition),vec3(0.1));
         cube3.materialID = 3;
-        vec4 color(1.0,0.8,0.6,1.0);
+        vec4 color((rand() % 255) / 255.0f,(rand() % 255) / 255.0f,(rand() % 255 ) / 255.0f,1.0);
         MaterialInstance unshadedColor(1);
         unshadedColor.set(0,color);
         cube3.materialInstanceID = MaterialInstanceLoader::loadMaterialInstance(unshadedColor);
