@@ -621,6 +621,7 @@ struct MeshBuffer
         meshBuffer.resize(meshBuffer.size() + vertexCount * 3);
         return ptr;
     }
+
     void generateNormals()
     {
         normalsPointer = allocateRegion();
@@ -651,7 +652,7 @@ struct MeshBuffer
             const glm::vec3 v1 = *(glm::vec3 *)&meshBuffer[i + vertexStride];
             const glm::vec3 v2 = *(glm::vec3 *)&meshBuffer[i + vertexStride*2];
 
-            const glm::vec2 uv0 = *(glm::vec3 *)&meshBuffer[i];
+            const glm::vec2 uv0 = *(glm::vec3 *)&meshBuffer[i + 6];
             const glm::vec2 uv1 = *(glm::vec3 *)&meshBuffer[i + vertexStride + 6];
             const glm::vec2 uv2 = *(glm::vec3 *)&meshBuffer[i + vertexStride*2 + 6];
             
@@ -671,9 +672,9 @@ struct MeshBuffer
             *(glm::vec3*)&meshBuffer[tangentsPointer + j + 6] = tangent;
 
 
-            *(glm::vec3*)&meshBuffer[bitangentsPointer + j] = tangent;
-            *(glm::vec3*)&meshBuffer[bitangentsPointer + j + 3] = tangent;
-            *(glm::vec3*)&meshBuffer[bitangentsPointer + j + 6] = tangent;
+            *(glm::vec3*)&meshBuffer[bitangentsPointer + j] = bitangent;
+            *(glm::vec3*)&meshBuffer[bitangentsPointer + j + 3] = bitangent;
+            *(glm::vec3*)&meshBuffer[bitangentsPointer + j + 6] = bitangent;
         }
 
         hasTangents = true;
@@ -1051,11 +1052,11 @@ struct Model
     }
 
     void process()  {
-        /*
+        
         if (materialID != 3)
         {
-            transformMatrix = glm::rotate(transformMatrix,0.1f * deltaTime, vec3(0,1,0));
-        } */
+            transformMatrix = glm::rotate(transformMatrix,0.1f * deltaTime, vec3(0.2,1,0));
+        }
     }
 
     bool operator<(const Model& model) const
@@ -1269,6 +1270,7 @@ void loadSpecificMaterials()
     
     container.setTexture(Texture::loadTexture(TextureData("metal_base.jpg")),0);
     container.setTexture(Texture::loadTexture(TextureData("metal_specular.jpg")),1);
+    container.setTexture(Texture::loadTexture(TextureData("metal_normal.jpg")),2);
     MaterialInstanceLoader::loadMaterialInstance(container);
 
     MaterialLoader::loadMaterial(Material("primitive",list<string>()));
