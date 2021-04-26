@@ -592,25 +592,46 @@ namespace Scene {
     }
 };
 
+enum MeshRegionType
+{
+    REGION_VERTEX = 0,
+    REGION_COLOR,
+    REGION_UV,
+    REGION_NORMAL,
+    REGION_TANGENT,
+    REGION_COUNT
+};
+
+struct MeshRegion
+{
+    size_t offset;
+    size_t stride;
+    size_t size;
+
+    MeshRegion() : stride(-1) { }
+    constexpr MeshRegion(size_t _offset,size_t _stride,size_t _size) : 
+    offset(_offset),
+    stride(_stride),
+    size(_size)
+    {}
+
+    inline bool enabled() const { return stride != -1; }
+};
+
 struct MeshBuffer
 {
-    vector<GLfloat> meshBuffer;
 
     size_t vertexCount;
     size_t vertexStride;
 
-    size_t normalsPointer;
-    size_t tangentsPointer;
-    size_t bitangentsPointer;
-
-    bool hasNormals;
-    bool hasTangents;
-    bool hasBitangents;
+    vector<GLfloat> meshBuffer;
+    vector<MeshRegion> regions;
 
     MeshBuffer(const GLfloat* raw_meshBuffer,int _vertexCount,int _vertexStride) : 
     vertexCount(_vertexCount),
     vertexStride(_vertexStride),
-    meshBuffer(_vertexCount * _vertexStride)
+    meshBuffer(_vertexCount * _vertexStride),
+    regions(REGION_COUNT)
     {
         memcpy(&meshBuffer[0],raw_meshBuffer,vertexCount * vertexStride * sizeof(GLfloat));
     }
@@ -624,7 +645,7 @@ struct MeshBuffer
 
     void generateNormals()
     {
-        normalsPointer = allocateRegion();
+        size_t normalsPointer = allocateRegion();
 
         for (int i = 0,j = 0; i < vertexCount * vertexStride; i += 3 * vertexStride, j += 9)
         {
@@ -639,13 +660,12 @@ struct MeshBuffer
             *(glm::vec3*)&meshBuffer[normalsPointer + j + 6] = normal;
         }
 
-        hasNormals = true;
+        regions[REGION_NORMAL] = {normalsPointer,3,3};
     }
 
     void generateTangents()
     {
-        tangentsPointer = allocateRegion();
-        bitangentsPointer = allocateRegion();
+        size_t tangentsPointer = allocateRegion();
         for (int i = 0,j = 0; i < vertexCount * vertexStride; i += 3 * vertexStride, j += 9)
         {
             const glm::vec3 v0 = *(glm::vec3 *)&meshBuffer[i];
@@ -665,21 +685,13 @@ struct MeshBuffer
 
             float r = 1.0f / (deltaUV1.x * deltaUV2.y - deltaUV1.y * deltaUV2.x);
             glm::vec3 tangent = (deltaPos1 * deltaUV2.y   - deltaPos2 * deltaUV1.y)*r;
-            glm::vec3 bitangent = (deltaPos2 * deltaUV1.x   - deltaPos1 * deltaUV2.x)*r;
 
             *(glm::vec3*)&meshBuffer[tangentsPointer + j] = tangent;
             *(glm::vec3*)&meshBuffer[tangentsPointer + j + 3] = tangent;
             *(glm::vec3*)&meshBuffer[tangentsPointer + j + 6] = tangent;
-
-
-            *(glm::vec3*)&meshBuffer[bitangentsPointer + j] = bitangent;
-            *(glm::vec3*)&meshBuffer[bitangentsPointer + j + 3] = bitangent;
-            *(glm::vec3*)&meshBuffer[bitangentsPointer + j + 6] = bitangent;
         }
-
-        hasTangents = true;
-        hasBitangents = true;
-
+        
+        regions[REGION_TANGENT] = {tangentsPointer,3,3};
     }
     void print() const
     {
@@ -689,12 +701,12 @@ struct MeshBuffer
             }
             cout << endl;
         }
-
+    /*
         if (hasNormals) {
             for (size_t i = normalsPointer; i < meshBuffer.size(); i+= 3) {
                 cout << meshBuffer[i] << " " << meshBuffer[i+1] << " " << meshBuffer[i+2] << endl;
             }
-        }
+        } */
     }
 
     inline void bufferData() const
@@ -716,20 +728,13 @@ struct MeshBuffer
             glEnableVertexAttribArray(2);
         }
         
-        if (hasNormals)
+        for (size_t i = 0; i < regions.size(); i++)
         {
-            glVertexAttribPointer(3,3,GL_FLOAT,GL_FALSE,3 * sizeof(float),(void*)(normalsPointer * sizeof(float)));
-            glEnableVertexAttribArray(3);
-        }
-        if (hasTangents)
-        {    
-            glVertexAttribPointer(4,3,GL_FLOAT,GL_FALSE,3 * sizeof(float),(void*)(tangentsPointer * sizeof(float)));
-            glEnableVertexAttribArray(4);
-        }
-        if(hasBitangents)
-        {    
-            glVertexAttribPointer(5,3,GL_FLOAT,GL_FALSE,3 * sizeof(float),(void*)(bitangentsPointer * sizeof(float)));
-            glEnableVertexAttribArray(5);
+            if (regions[i].enabled())
+            {
+                glVertexAttribPointer(i,regions[i].size,GL_FLOAT,GL_FALSE,regions[i].stride * sizeof(float),(void*)(regions[i].offset * sizeof(float)));
+                glEnableVertexAttribArray(i);
+            }
         }
     }
     inline const GLfloat* raw() const
