@@ -713,6 +713,57 @@ struct PreparedMesh
     }
 };
 
+
+#include <assimp/Importer.hpp>
+#include <assimp/scene.h>
+#include <assimp/postprocess.h>
+class PreparedScene
+{
+    string directory;
+    vector<PreparedMesh> meshes;
+
+    void loadScene(const string& path)
+    {
+        Assimp::Importer import;
+        const aiScene *scene = import.ReadFile(path, aiProcess_Triangulate | aiProcess_FlipUVs);	
+    
+        if(!scene || scene->mFlags & AI_SCENE_FLAGS_INCOMPLETE || !scene->mRootNode) 
+        {
+            cerr << "ERROR::ASSIMP::" << import.GetErrorString() << endl;
+            throw std::runtime_error("Failed to load scene");
+        }
+        directory = path.substr(0, path.find_last_of('/'));
+
+        processNode(scene->mRootNode, scene);
+    }
+
+    void processNode(aiNode *node,const aiScene *scene)
+    {
+         // process all the node's meshes (if any)
+        for(unsigned int i = 0; i < node->mNumMeshes; i++)
+        {
+            aiMesh *mesh = scene->mMeshes[node->mMeshes[i]]; 
+            meshes.push_back(processMesh(mesh, scene));			
+        }
+        // then do the same for each of its children
+        for(unsigned int i = 0; i < node->mNumChildren; i++)
+        {
+            processNode(node->mChildren[i], scene);
+        }
+    }
+    PreparedMesh processMesh(aiMesh *mesh,const aiScene *scene)
+    {
+        
+    }
+
+    public:
+    PreparedScene(const string& path)
+    {
+        loadScene(path);
+    }
+    
+};
+
 /**
  * Mantiene un vector de todas las mesh disponibles a usar y algunas funciones utilitarias para crear Meshes
  */
