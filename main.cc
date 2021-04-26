@@ -24,6 +24,7 @@ using namespace glm;
 
 const float deltaTime = 0.1;
 
+
 /*
  * This templates keeps a sorted vector and a set of unordered references mapped to the vector
  * Bheaviour is the same as vector except that this structure enables for an ordered trasversal of the items
@@ -667,15 +668,15 @@ struct Mesh {
 
 };
 
+struct Vertex
+{
+    glm::vec3 position;
+    glm::vec3 normal;
+    glm::vec2 texCoords;
+};
 struct PreparedMesh
 {
 
-    struct Vertex
-    {
-        glm::vec3 position;
-        glm::vec3 normal;
-        glm::vec2 texCoords;
-    };
 
     GLuint VAO,VBO,EBO;
     std::vector<Vertex> vertices;
@@ -803,13 +804,13 @@ namespace MeshLoader
     
         // +Z
     
-        -1.0,-1.0,1.0,    1.0,0.0,0.0,  0.0,1.0,
-        -1.0,1.0,1.0,     0.0,1.0,0.0,  0.0,0.0,
-        1.0,1.0,1.0,      0.0,0.0,1.0,  1.0,1.0,
+        -1.0,-1.0,1.0,    1.0,0.0,0.0,  1.0,1.0,
+        -1.0,1.0,1.0,     0.0,1.0,0.0,  1.0,0.0,
+        1.0,1.0,1.0,      0.0,0.0,1.0,  0.0,0.0,
                                                 
-        1.0,1.0,1.0,      0.0,0.0,1.0,  1.0,0.0,
-        1.0,-1.0,1.0,     0.0,1.0,0.0,  1.0,1.0,
-        -1.0,-1.0,1.0,    1.0,0.0,0.0,  0.0,0.0,
+        1.0,1.0,1.0,      0.0,0.0,1.0,  0.0,0.0,
+        1.0,-1.0,1.0,     0.0,1.0,0.0,  0.0,1.0,
+        -1.0,-1.0,1.0,    1.0,0.0,0.0,  1.0,1.0,
     
         // +Y
     
@@ -818,30 +819,30 @@ namespace MeshLoader
         -1.0,1.0,1.0,     0.0,1.0,0.0,  1.0,1.0,
                                                 
                                         
-        -1.0,1.0,1.0,     0.0,1.0,0.0,  1.0,0.0,
-        1.0,1.0,-1.0,     0.0,0.0,1.0,  1.0,1.0,
-        1.0,1.0,1.0,      0.0,0.0,1.0,  0.0,0.0,        
+        -1.0,1.0,1.0,     0.0,1.0,0.0,  1.0,1.0,
+        1.0,1.0,-1.0,     0.0,0.0,1.0,  0.0,0.0,
+        1.0,1.0,1.0,      0.0,0.0,1.0,  1.0,0.0,        
                                                 
                                                 
         // -Y                           
                                         
-        1.0,-1.0,-1.0,    0.0,1.0,0.0,  0.0,1.0,
-        -1.0,-1.0,-1.0,   1.0,0.0,0.0,  0.0,0.0,
-        -1.0,-1.0,1.0,    1.0,0.0,0.0,  1.0,1.0,
+        1.0,-1.0,-1.0,    0.0,1.0,0.0,  1.0,1.0,
+        -1.0,-1.0,-1.0,   1.0,0.0,0.0,  1.0,0.0,
+        -1.0,-1.0,1.0,    1.0,0.0,0.0,  0.0,0.0,
                                                 
                                         
-        1.0,-1.0,-1.0,    0.0,1.0,0.0,  1.0,0.0,
-        -1.0,-1.0,1.0,    1.0,0.0,0.0,  1.0,1.0,
-        1.0,-1.0,1.0,     0.0,1.0,0.0,  0.0,0.0,
+        1.0,-1.0,-1.0,    0.0,1.0,0.0,  1.0,1.0,
+        -1.0,-1.0,1.0,    1.0,0.0,0.0,  0.0,0.0,
+        1.0,-1.0,1.0,     0.0,1.0,0.0,  0.0,1.0,
     
         // +X
     
-        1.0,1.0,-1.0,     0.0,0.0,1.0,   0.0,1.0,
-        1.0,-1.0,-1.0,    0.0,1.0,0.0,   0.0,0.0,
+        1.0,1.0,-1.0,     0.0,0.0,1.0,   0.0,0.0,
+        1.0,-1.0,-1.0,    0.0,1.0,0.0,   0.0,1.0,
         1.0,-1.0,1.0,     0.0,1.0,0.0,   1.0,1.0,
                                                  
-        1.0,-1.0,1.0,     0.0,1.0,0.0,   1.0,0.0,
-        1.0,1.0,1.0,      0.0,0.0,1.0,   1.0,1.0,
+        1.0,-1.0,1.0,     0.0,1.0,0.0,   1.0,1.0,
+        1.0,1.0,1.0,      0.0,0.0,1.0,   1.0,0.0,
         1.0,1.0,-1.0,     0.0,0.0,1.0,   0.0,0.0,
                                                  
         // -X                                    
@@ -984,10 +985,11 @@ struct Model
     }
 
     void process()  {
+        /*
         if (materialID != 3)
         {
             transformMatrix = glm::rotate(transformMatrix,0.1f * deltaTime, vec3(0,1,0));
-        }
+        } */
     }
 
     bool operator<(const Model& model) const
@@ -1199,8 +1201,8 @@ void loadSpecificMaterials()
 
     MaterialInstance container({Uniform(3.3f)});
     
-    container.setTexture(Texture::loadTexture(TextureData("container.png")),0);
-    container.setTexture(Texture::loadTexture(TextureData("container_specular.png")),1);
+    container.setTexture(Texture::loadTexture(TextureData("metal_base.jpg")),0);
+    container.setTexture(Texture::loadTexture(TextureData("metal_specular.jpg")),1);
     MaterialInstanceLoader::loadMaterialInstance(container);
 
     MaterialLoader::loadMaterial(Material("primitive",list<string>()));
@@ -1267,15 +1269,23 @@ void loadSpecificWorld()
     Model cube = Model(MeshLoader::loadMesh(MeshLoader::createPrimitiveMesh(MeshLoader::Cube,true)));
     cube.materialID = 2;
     cube.materialInstanceID = 0;
+    ModelLoader::loadModel(cube);
     Model cube2 = cube;
 
-    cube2.transformMatrix = glm::scale(glm::translate(mat4(cube.transformMatrix),vec3(0,1.5,0.0)),vec3(0.5));
-    Model cube3 = cube2;
+    for (size_t i = 1; i < 4; i++)
+    {
+        for (size_t j = 1; j < 4; j++)
+        {
+            cube2.transformMatrix = glm::translate(mat4(cube.transformMatrix),vec3(2.2 * i,2.2 * j,0.0));
+            ModelLoader::loadModel(cube2);
+        }
+    }
+    
 
 
-    ModelLoader::loadModel(cube);
     ModelLoader::loadModel(cube2);
 
+    Model cube3 = cube2;
     for (size_t i = 0; i < 4; i++)
     {
 

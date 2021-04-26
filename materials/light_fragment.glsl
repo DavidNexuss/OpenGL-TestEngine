@@ -28,8 +28,8 @@ vec3 phong(int i)
     float diff = max(dot(normalCord,lightDir),0.0);
     float spec = pow(max(dot(viewDir, reflectDir), 0.0),32);
 
-    vec3 diffuse =  (diff + 0.1) * texture(texture0,texCord).xyz;
-    vec3 specular = spec * texture(texture1,texCord).xyz;
+    vec3 diffuse =  (diff + 0.1) * texture(texture0,texCord * 0.2).xyz;
+    vec3 specular = (spec * shinness + 0.05) * texture(texture1,texCord * 0.2).xyz;
 
     float l = length(lightV);
     return (diffuse + specular) * lightColor[i];
@@ -43,5 +43,5 @@ void main()
         v += phong(i);
     }
 
-    color = vec4(texture(texture0,texCord).xyz,1.0);
+    color = vec4(v,1.0);
 }
