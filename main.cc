@@ -176,6 +176,8 @@ struct TextureData
             throw std::runtime_error("Error loading texture");
         }
     }
+
+    inline GLint format() const { return nrChannels == 3 ? GL_RGB : GL_RGBA; }
 };
 using TextureID = size_t;
 namespace Texture
@@ -206,6 +208,32 @@ namespace Texture
         texturesData.push_back(textureData);
         glTexturesIds.push_back(texId);
         return texturesData.size() - 1;
+    }
+    
+    TextureID loadCubemap(const vector<TextureData> &cubemaps)
+    {
+        for (size_t i = 0; i < cubemaps.size(); i++)
+            if (!cubemaps[i].data)
+                return -1;
+
+        GLuint texId;
+        glGenTextures(1, &texId);
+        glBindTexture(GL_TEXTURE_CUBE_MAP, texId);
+
+        glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
+
+        for (size_t i = 0; i < cubemaps.size(); i++)
+        {
+            glTexImage2D(GL_TEXTURE_CUBE_MAP_POSITIVE_X + i,
+                         0, GL_RGB, cubemaps[i].width, cubemaps[i].height, 0, cubemaps[i].format(), GL_UNSIGNED_BYTE, cubemaps[i].data);
+        }
+
+        glTexturesIds.push_back(texId);
+        return glTexturesIds.size() - 1;
     }
 
     inline void useTexture(TextureID textureID,int textureUnit)
@@ -996,6 +1024,7 @@ namespace Renderer
     inline void useMaterial(MaterialID id);
     inline void useMaterialInstance(MaterialInstanceID id);
     inline void useMesh(MeshID id);
+    inline void drawMesh();
 }
 using LightID = size_t;
 
@@ -1084,6 +1113,33 @@ namespace ModelLoader
 
     inline Model& get(ModelID modelID) { return models[modelID]; }
 };
+
+struct SkyBox
+{
+    MaterialID materialID;
+    MaterialInstanceID materialInstanceID;
+    static MeshID skymesh;
+
+    SkyBox(MaterialID _materialID, MaterialInstanceID _materialInstanceID) : materialID(_materialID),
+                                                                             materialInstanceID(_materialInstanceID)
+    {
+        if (skymesh == -1)
+            skymesh = MeshLoader::loadMesh(MeshLoader::createPrimitiveMesh(MeshLoader::Cube, true));
+    }
+
+    void draw()
+    {
+        glDepthMask(GL_FALSE);
+        Renderer::useMaterial(materialID);
+        Renderer::useMaterialInstance(materialInstanceID);
+        Renderer::useMesh(skymesh);
+        Renderer::drawMesh();
+        glDepthMask(GL_TRUE);
+    }
+};
+
+MeshID SkyBox::skymesh = -1;
+
 namespace Util
 {
     struct VRP
@@ -1149,6 +1205,11 @@ namespace Renderer
             glBindVertexArray(MeshLoader::meshes[MeshLoader::currentMesh].vao);
             REGISTER_MESH_SWAP();
         }
+    }
+    
+    inline void drawMesh()
+    {
+        glDrawArrays(GL_TRIANGLES,0,MeshLoader::meshes[MeshLoader::currentMesh].vertexCount);
     }
 
     inline void useMaterialInstance(MaterialInstanceID instanceID)
