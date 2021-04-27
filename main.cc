@@ -685,6 +685,7 @@ struct MeshBuffer
 
             float r = 1.0f / (deltaUV1.x * deltaUV2.y - deltaUV1.y * deltaUV2.x);
             glm::vec3 tangent = (deltaPos1 * deltaUV2.y   - deltaPos2 * deltaUV1.y)*r;
+            tangent = glm::normalize(tangent);
 
             *(glm::vec3*)&meshBuffer[tangentsPointer + j] = tangent;
             *(glm::vec3*)&meshBuffer[tangentsPointer + j + 3] = tangent;
@@ -1057,11 +1058,11 @@ struct Model
     }
 
     void process()  {
-        
+        /*
         if (materialID != 3)
         {
             transformMatrix = glm::rotate(transformMatrix,0.1f * deltaTime, vec3(0.2,1,0));
-        }
+        }*/
     }
 
     bool operator<(const Model& model) const
