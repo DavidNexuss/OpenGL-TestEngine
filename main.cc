@@ -30,7 +30,7 @@ const float deltaTime = 0.1;
  * Bheaviour is the same as vector except that this structure enables for an ordered trasversal of the items
  */
 
-#define BATCHING_ENABLED
+//#define BATCHING_ENABLED
 template <typename T>
 struct sorted_vector
 {
@@ -102,6 +102,17 @@ namespace Debug
         cerr << "----" << endl;
         cerr << "Missing uniforms: " << missingUniforms << endl;
         cerr << "----" << endl;
+    }
+
+    void glError(GLenum source,
+            GLenum type,
+            GLuint id,
+            GLenum severity,
+            GLsizei length,
+            const GLchar *message,
+            const void *userParam)
+    {
+       throw new std::runtime_error("GL ERROR"); 
     }
 }
 #define DEBUG
@@ -236,14 +247,14 @@ namespace Texture
         return glTexturesIds.size() - 1;
     }
 
-    inline void useTexture(TextureID textureID,int textureUnit)
+    inline void useTexture(TextureID textureID,int textureUnit,GLenum mode)
     {
         GLuint glTextureID = glTexturesIds[textureID];
         if (texturesUnits[textureUnit] != textureID)
         {
             texturesUnits[textureUnit] = textureID;
             glActiveTexture(GL_TEXTURE0 + textureUnit);
-            glBindTexture(GL_TEXTURE_2D,glTextureID);
+            glBindTexture(mode,glTextureID);
             REGISTER_TEXTURE_SWAP();
         }
     }
@@ -367,7 +378,7 @@ struct Material
     
     string materialName;
     vector<GLuint> textureUniforms;
-
+    bool isSkyboxMaterial = false;
     Material(string materialName,const list<string>& uniforms)
     {
         this->materialName = materialName;
@@ -455,7 +466,7 @@ struct Material
         {
             if (instance.assignedTextureUnits[i] != -1)
             {
-                Texture::useTexture(instance.assignedTextureUnits[i],i);
+                Texture::useTexture(instance.assignedTextureUnits[i],i,isSkyboxMaterial ? GL_TEXTURE_CUBE_MAP : GL_TEXTURE_2D);
                 glUniform1i(textureUniforms[i],i);
             }
         }
@@ -1010,6 +1021,8 @@ namespace MeshLoader
         }
 
         Mesh mesh(meshArrayPtr,vertexCount,vertexStride);
+        mesh.vao = VAO;
+        mesh.vbo = VBO;
         mesh.meshBuffer->generateNormals();
         mesh.meshBuffer->generateTangents();
         mesh.meshBuffer->bufferData();
@@ -1130,10 +1143,12 @@ struct SkyBox
     void draw()
     {
         glDepthMask(GL_FALSE);
+        MaterialLoader::materials[materialID].isSkyboxMaterial = true;
         Renderer::useMaterial(materialID);
         Renderer::useMaterialInstance(materialInstanceID);
         Renderer::useMesh(skymesh);
         Renderer::drawMesh();
+        MaterialLoader::materials[materialID].isSkyboxMaterial = false;
         glDepthMask(GL_TRUE);
     }
 };
@@ -1437,15 +1452,19 @@ void loadSpecificWorld()
     }
 }
 
+
 int main(int argc, char** argv)
 {
-    
     Window *window = createWindow();
     
     glfwSetCursorPosCallback(window, Viewport::cursor_position_callback);
     glfwSetFramebufferSizeCallback(window, Viewport::framebuffer_size_callback);
     glfwSetScrollCallback(window, Viewport::scroll_callback);
 
+    #ifdef DEBUG
+    glDebugMessageCallback(&Debug::glError,NULL);
+    glEnable(GL_DEBUG_OUTPUT);
+    #endif
     loadSpecificMaterials();
     loadSpecificWorld();
     
