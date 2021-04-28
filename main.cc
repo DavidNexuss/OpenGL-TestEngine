@@ -250,6 +250,15 @@ namespace Texture
         return glTexturesIds.size() - 1;
     }
 
+    TextureID createSkyBox(const vector<string>& paths)
+    {
+        vector<TextureData> textureData;
+        for (size_t i = 0; i < paths.size(); i++)
+        {
+            textureData.emplace_back(paths[i]);
+        }
+        return Texture::loadCubemap(textureData);
+    }
     inline void useTexture(TextureID textureID,int textureUnit,GLenum mode)
     {
         GLuint glTextureID = glTexturesIds[textureID];
@@ -1239,30 +1248,19 @@ namespace ModelLoader
     inline Model& get(ModelID modelID) { return models[modelID]; }
 };
 
-Model createSkyBox(const vector<string>& textures)
+Model createSkyBox()
 {
-    vector<TextureData> textureData;
-    for (size_t i = 0; i < textures.size(); i++)
-    {
-        textureData.emplace_back(textures[i]);
-    }
-    TextureID cubeMap_texture = Texture::loadCubemap(textureData);
     Material cubeMap_material("cubemap",list<string>());
     cubeMap_material.isSkyboxMaterial = true;
 
     MaterialID cubeMap_material_id = MaterialLoader::loadMaterial(cubeMap_material);
-    MaterialInstance skyMaterial;
-    skyMaterial.setTexture(cubeMap_texture,0);
-    MaterialInstanceID skyMaterialInstance = MaterialInstanceLoader::loadMaterialInstance(skyMaterial);
     
     MeshID cubeMap_mesh = MeshLoader::loadMesh(MeshLoader::createPrimitiveMesh(MeshLoader::SkyBox,true));
     
-    Model cubeMap_model(cubeMap_mesh,cubeMap_material_id);
-    cubeMap_model.materialInstanceID = skyMaterialInstance;
+    Model cubeMap_model(cubeMap_mesh,cubeMap_material_id); 
     cubeMap_model.depthMask = true;
     cubeMap_model.cullBack = true;
-    
-    Texture::skyBoxID = cubeMap_texture;
+
     return cubeMap_model; 
 }
 
@@ -1405,12 +1403,21 @@ namespace Renderer
         auto& models = ModelLoader::models.native();
         bool inverseOrder = false;
         Model skyBox =     createSkyBox({
+
             "sky/right.jpg",
             "sky/left.jpg",
             "sky/top.jpg",
             "sky/bottom.jpg",
             "sky/front.jpg",
-            "sky/back.jpg"});
+            "sky/back.jpg"
+            
+/*
+            "night-skyboxes/SwedishRoyalCastle/posx.jpg",
+            "night-skyboxes/SwedishRoyalCastle/negx.jpg",
+            "night-skyboxes/SwedishRoyalCastle/posy.jpg",
+            "night-skyboxes/SwedishRoyalCastle/negy.jpg",
+            "night-skyboxes/SwedishRoyalCastle/posz.jpg",
+            "night-skyboxes/SwedishRoyalCastle/negz.jpg" */ });
         do{
 
             REGISTER_FRAME();
