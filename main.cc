@@ -30,7 +30,7 @@ const float deltaTime = 0.1;
  * Bheaviour is the same as vector except that this structure enables for an ordered trasversal of the items
  */
 
-//#define BATCHING_ENABLED
+#define BATCHING_ENABLED
 template <typename T>
 struct sorted_vector
 {
@@ -112,7 +112,8 @@ namespace Debug
             const GLchar *message,
             const void *userParam)
     {
-       throw new std::runtime_error("GL ERROR"); 
+       cerr << message << endl;
+      // throw new std::runtime_error("GL error"); 
     }
 }
 #define DEBUG
@@ -194,9 +195,11 @@ using TextureID = size_t;
 namespace Texture
 {
     const static size_t maxTextureUnits = 16;
-    vector<TextureData> texturesData;                   // textureID -> textureData
-    vector<GLuint> glTexturesIds;                       // textureID -> GLID
+    vector<TextureData> texturesData;                                // textureID -> textureData
+    vector<GLuint> glTexturesIds;                                    // textureID -> GLID
     vector<TextureID> texturesUnits(maxTextureUnits,-1);             // slot -> textureID
+
+    TextureID skyBoxID;
 
     TextureID loadTexture(const TextureData& textureData)
     {
@@ -258,6 +261,18 @@ namespace Texture
             REGISTER_TEXTURE_SWAP();
         }
     }
+    
+    inline void setSkyBoxTexture(TextureID text_id)
+    {
+        skyBoxID = text_id;
+    }
+
+    inline int bindSkyBox()
+    {
+        useTexture(skyBoxID,15,GL_TEXTURE_CUBE_MAP);
+        return 15;
+    }
+    
 }
 
 #define UNIFORMS_LIST(o) \
@@ -364,6 +379,7 @@ enum UniformBasics
     UNIFORM_LIGHTPOSITION,
     UNIFORM_LIGHTCOUNT,
     UNIFORM_VIEW_POS,
+    UNIFORM_SKYBOX,
     UNIFORM_COUNT
 };
 
@@ -379,6 +395,7 @@ struct Material
     string materialName;
     vector<GLuint> textureUniforms;
     bool isSkyboxMaterial = false;
+
     Material(string materialName,const list<string>& uniforms)
     {
         this->materialName = materialName;
@@ -420,6 +437,7 @@ struct Material
         uniforms[UNIFORM_LIGHTPOSITION] = getUniformLocation(programID,"lightPosition");
         uniforms[UNIFORM_LIGHTCOUNT] = getUniformLocation(programID,"lightCount");
         uniforms[UNIFORM_VIEW_POS] = getUniformLocation(programID,"viewPos");
+        uniforms[UNIFORM_SKYBOX] = getUniformLocation(programID,"skybox");
 
         for(const auto& uniform : uniformsList)
         {
@@ -444,6 +462,10 @@ struct Material
     inline void bind()
     {
         glUseProgram(programID);
+        if (uniforms[UNIFORM_SKYBOX] != -1)
+        {
+            glUniform1i(uniforms[UNIFORM_SKYBOX],Texture::bindSkyBox());
+        }
     }
 
     void useInstance(MaterialInstanceID materialInstanceID)
@@ -594,8 +616,14 @@ struct Camera
     void flush()
     {
             glUniformMatrix4fv(MaterialLoader::current()[UNIFORM_PROJECTION_MATRIX],1,false,&projectionMatrix[0][0]);
-            glUniformMatrix4fv(MaterialLoader::current()[UNIFORM_VIEW_MATRIX],1,false,&viewMatrix[0][0]);
             glUniform3fv(MaterialLoader::current()[UNIFORM_VIEW_POS],1,&invViewMatrix[3][0]);
+            
+            if(MaterialLoader::materials[MaterialLoader::currentMaterial].isSkyboxMaterial)
+            {
+                mat4 skyView = mat4(mat3(viewMatrix));
+                glUniformMatrix4fv(MaterialLoader::current()[UNIFORM_VIEW_MATRIX],1,false,&skyView[0][0]);
+            }else
+            glUniformMatrix4fv(MaterialLoader::current()[UNIFORM_VIEW_MATRIX],1,false,&viewMatrix[0][0]);
     }
 };
 
@@ -985,10 +1013,54 @@ namespace MeshLoader
     
     };
     
+    static const float skyboxVertices[] = {
+        // positions          
+        -1.0f,  1.0f, -1.0f,
+        -1.0f, -1.0f, -1.0f,
+         1.0f, -1.0f, -1.0f,
+         1.0f, -1.0f, -1.0f,
+         1.0f,  1.0f, -1.0f,
+        -1.0f,  1.0f, -1.0f,
+
+        -1.0f, -1.0f,  1.0f,
+        -1.0f, -1.0f, -1.0f,
+        -1.0f,  1.0f, -1.0f,
+        -1.0f,  1.0f, -1.0f,
+        -1.0f,  1.0f,  1.0f,
+        -1.0f, -1.0f,  1.0f,
+
+         1.0f, -1.0f, -1.0f,
+         1.0f, -1.0f,  1.0f,
+         1.0f,  1.0f,  1.0f,
+         1.0f,  1.0f,  1.0f,
+         1.0f,  1.0f, -1.0f,
+         1.0f, -1.0f, -1.0f,
+
+        -1.0f, -1.0f,  1.0f,
+        -1.0f,  1.0f,  1.0f,
+         1.0f,  1.0f,  1.0f,
+         1.0f,  1.0f,  1.0f,
+         1.0f, -1.0f,  1.0f,
+        -1.0f, -1.0f,  1.0f,
+
+        -1.0f,  1.0f, -1.0f,
+         1.0f,  1.0f, -1.0f,
+         1.0f,  1.0f,  1.0f,
+         1.0f,  1.0f,  1.0f,
+        -1.0f,  1.0f,  1.0f,
+        -1.0f,  1.0f, -1.0f,
+
+        -1.0f, -1.0f, -1.0f,
+        -1.0f, -1.0f,  1.0f,
+         1.0f, -1.0f, -1.0f,
+         1.0f, -1.0f, -1.0f,
+        -1.0f, -1.0f,  1.0f,
+         1.0f, -1.0f,  1.0f
+    };
     
     enum PrimitiveMeshType
     {
-        Triangle,Plain,Cube
+        Triangle,Plain,Cube,SkyBox
     };
     Mesh createPrimitiveMesh(PrimitiveMeshType type,bool uv = false)
     {
@@ -1018,15 +1090,29 @@ namespace MeshLoader
             case Cube:
             vertexCount = 36;
             meshArrayPtr = cube_mesh;
+            break;
+
+            case SkyBox:
+            vertexCount = 36;
+            meshArrayPtr = skyboxVertices;
         }
 
         Mesh mesh(meshArrayPtr,vertexCount,vertexStride);
         mesh.vao = VAO;
         mesh.vbo = VBO;
-        mesh.meshBuffer->generateNormals();
-        mesh.meshBuffer->generateTangents();
-        mesh.meshBuffer->bufferData();
-        mesh.meshBuffer->bindRegions();
+        if(type == SkyBox)
+        {
+            mesh.meshBuffer->bufferData();
+            glVertexAttribPointer(0,3,GL_FLOAT,GL_FALSE,3 * sizeof(GLfloat),(void*)0);
+            glEnableVertexAttribArray(0);
+        }
+        else
+        {
+            mesh.meshBuffer->generateNormals();
+            mesh.meshBuffer->generateTangents();
+            mesh.meshBuffer->bufferData();
+            mesh.meshBuffer->bindRegions();
+        }
         return mesh;
     }
 };
@@ -1082,29 +1168,53 @@ struct Model
     mat4 transformMatrix;
     mat3 normalMatrix;
 
+    bool depthMask = false;
+    bool cullBack = false;
+
+    static bool lastCull;
+
     Model(MeshID _meshID,MaterialID _materialID = 0) : meshID(_meshID), materialID(_materialID), transformMatrix(1.0f) { }
 
     inline void draw()
     {
+
+        if (lastCull != cullBack)
+        {
+            glCullFace(GL_FRONT + cullBack);
+            lastCull = cullBack;
+        }  
+
+        if (depthMask) glDepthMask(GL_FALSE);
+
         Renderer::useMaterial(materialID);
         if (materialInstanceID != -1) Renderer::useMaterialInstance(materialInstanceID);
-        
-        const Mesh& mesh = MeshLoader::meshes[meshID];
+
         Renderer::useMesh(meshID);
         
-        normalMatrix = glm::transpose(glm::inverse(transformMatrix));
+        const vector<GLuint>& uniformVector = MaterialLoader::current();
         
-        glUniformMatrix4fv(MaterialLoader::current()[UNIFORM_TRANSFORM_MATRIX],1,false,&transformMatrix[0][0]);
-        glUniformMatrix3fv(MaterialLoader::current()[UNIFORM_NORMAL_MATRIX],1,false,&normalMatrix[0][0]);
-        glDrawArrays(GL_TRIANGLES,0,mesh.vertexCount);
+        if(uniformVector[UNIFORM_TRANSFORM_MATRIX] != -1)
+        {
+            glUniformMatrix4fv(uniformVector[UNIFORM_TRANSFORM_MATRIX],1,false,&transformMatrix[0][0]);
+        }
+
+        if (uniformVector[UNIFORM_NORMAL_MATRIX] != -1)
+        {
+            normalMatrix = glm::transpose(glm::inverse(transformMatrix));
+            glUniformMatrix3fv(uniformVector[UNIFORM_NORMAL_MATRIX],1,false,&normalMatrix[0][0]);
+        }
+
+        Renderer::drawMesh();
+
+        if(depthMask) glDepthMask(GL_TRUE);
     }
 
     void process()  {
-        /*
+        
         if (materialID != 3)
         {
             transformMatrix = glm::rotate(transformMatrix,0.1f * deltaTime, vec3(0.2,1,0));
-        }*/
+        }
     }
 
     bool operator<(const Model& model) const
@@ -1114,6 +1224,8 @@ struct Model
                 (model.materialInstanceID == model.materialInstanceID && meshID < model.meshID)));
     }
 };
+
+bool Model::lastCull = false;
 
 namespace ModelLoader
 {
@@ -1127,33 +1239,32 @@ namespace ModelLoader
     inline Model& get(ModelID modelID) { return models[modelID]; }
 };
 
-struct SkyBox
+Model createSkyBox(const vector<string>& textures)
 {
-    MaterialID materialID;
-    MaterialInstanceID materialInstanceID;
-    static MeshID skymesh;
-
-    SkyBox(MaterialID _materialID, MaterialInstanceID _materialInstanceID) : materialID(_materialID),
-                                                                             materialInstanceID(_materialInstanceID)
+    vector<TextureData> textureData;
+    for (size_t i = 0; i < textures.size(); i++)
     {
-        if (skymesh == -1)
-            skymesh = MeshLoader::loadMesh(MeshLoader::createPrimitiveMesh(MeshLoader::Cube, true));
+        textureData.emplace_back(textures[i]);
     }
+    TextureID cubeMap_texture = Texture::loadCubemap(textureData);
+    Material cubeMap_material("cubemap",list<string>());
+    cubeMap_material.isSkyboxMaterial = true;
 
-    void draw()
-    {
-        glDepthMask(GL_FALSE);
-        MaterialLoader::materials[materialID].isSkyboxMaterial = true;
-        Renderer::useMaterial(materialID);
-        Renderer::useMaterialInstance(materialInstanceID);
-        Renderer::useMesh(skymesh);
-        Renderer::drawMesh();
-        MaterialLoader::materials[materialID].isSkyboxMaterial = false;
-        glDepthMask(GL_TRUE);
-    }
-};
-
-MeshID SkyBox::skymesh = -1;
+    MaterialID cubeMap_material_id = MaterialLoader::loadMaterial(cubeMap_material);
+    MaterialInstance skyMaterial;
+    skyMaterial.setTexture(cubeMap_texture,0);
+    MaterialInstanceID skyMaterialInstance = MaterialInstanceLoader::loadMaterialInstance(skyMaterial);
+    
+    MeshID cubeMap_mesh = MeshLoader::loadMesh(MeshLoader::createPrimitiveMesh(MeshLoader::SkyBox,true));
+    
+    Model cubeMap_model(cubeMap_mesh,cubeMap_material_id);
+    cubeMap_model.materialInstanceID = skyMaterialInstance;
+    cubeMap_model.depthMask = true;
+    cubeMap_model.cullBack = true;
+    
+    Texture::skyBoxID = cubeMap_texture;
+    return cubeMap_model; 
+}
 
 namespace Util
 {
@@ -1293,6 +1404,13 @@ namespace Renderer
         
         auto& models = ModelLoader::models.native();
         bool inverseOrder = false;
+        Model skyBox =     createSkyBox({
+            "sky/right.jpg",
+            "sky/left.jpg",
+            "sky/top.jpg",
+            "sky/bottom.jpg",
+            "sky/front.jpg",
+            "sky/back.jpg"});
         do{
 
             REGISTER_FRAME();
@@ -1303,7 +1421,7 @@ namespace Renderer
             
             Scene::time += deltaTime;
             Scene::update();
-
+            skyBox.draw();
             if (inverseOrder)
             {
                 for(int i = 0; i < models.size(); i++)
@@ -1344,9 +1462,8 @@ namespace Renderer
 //Funciones especificas de testeo
 void loadSpecificMaterials()
 {
-    
-    MaterialInstance debugMaterialInstance;
-    debugMaterialInstance.setTexture(Texture::loadTexture(TextureData("uvgrid.png")),0);
+
+    MaterialInstance debugMaterialInstance({vec4(1.0,1.0,1.0,1.0)});
 
     MaterialInstance container({Uniform(3.3f)});
     
@@ -1360,19 +1477,15 @@ void loadSpecificMaterials()
     Material light("light",{"shinness"});
 
     MaterialLoader::loadMaterial(light);
-    MaterialLoader::loadMaterial(Material("unshaded",{"shadecolor"}));
+    MaterialLoader::debugMaterialID = MaterialLoader::loadMaterial(Material("unshaded",{"shadecolor"}));
+    MaterialLoader::debugMaterialInstanceID = MaterialInstanceLoader::loadMaterialInstance(MaterialInstance({vec4(1.0,1.0,1.0,1.0)}));
 
-
-    Material debug("debug",list<string>());
+    Material debug("unshaded",list<string>());
     Material textured("textured",list<string>());
     MaterialLoader::loadMaterial(textured);
 
     Material textured2("textured",list<string>());
     MaterialLoader::loadMaterial(textured2);
-
-    
-    MaterialLoader::debugMaterialID = MaterialLoader::loadMaterial(debug);
-    MaterialLoader::debugMaterialInstanceID = MaterialInstanceLoader::loadMaterialInstance(debugMaterialInstance);
 }
 void loadSpecificWorld()
 {
@@ -1412,8 +1525,6 @@ void loadSpecificWorld()
     plainA.transformMatrix = scale(plainA.transformMatrix,vec3(3.0,3.0,3.0));
     ModelLoader::loadModel(plainA);
   */  
-    
-    CameraLoader::load(Camera());
 
     
     Model cube = Model(MeshLoader::loadMesh(MeshLoader::createPrimitiveMesh(MeshLoader::Cube,true)));
@@ -1468,6 +1579,7 @@ int main(int argc, char** argv)
     loadSpecificMaterials();
     loadSpecificWorld();
     
+    CameraLoader::load(Camera());
     Renderer::Ui::setup_ui(window);
     return Renderer::render_loop(window);
 }

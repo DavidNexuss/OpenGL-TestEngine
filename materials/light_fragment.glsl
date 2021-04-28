@@ -2,9 +2,10 @@
 
 const int maxLights = 6;
 
-uniform sampler2D texture0; //Diffuse map
-uniform sampler2D texture1; //Specular map
-uniform sampler2D texture2; //Normal map
+uniform sampler2D texture0;   //Diffuse map
+uniform sampler2D texture1;   //Specular map
+uniform sampler2D texture2;   //Normal map
+uniform samplerCube skybox; //SkyBox 
 
 uniform float shinness;
 
@@ -31,10 +32,13 @@ void main()
     
     vec3 diffuseValue = texture(texture0,texCoord * uv_scale).xyz;
     vec3 specularValue = texture(texture1,texCoord * uv_scale).xyz;
-    
+        
     vec3 viewDir = normalize(viewPos - fragPosition.xyz);
+    vec3 R = reflect(-viewDir,normalValue);
 
     vec3 v = vec3(0.0);
+    v += texture(skybox, R).rgb * (specularValue * 0.7);
+
     for (int i = 0; i < lightCount; i++)
     {
         vec3 lightDir = normalize(lightPosition[i] - fragPosition.xyz);
@@ -48,6 +52,5 @@ void main()
     
         v += (diffuse + specular) * lightColor[i];
     }
-
     color = vec4(v,1.0);
 }
